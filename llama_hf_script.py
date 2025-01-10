@@ -318,7 +318,6 @@ def main():
     train_size = len(train_ds_raw)
     print(f"Train dataset size: {train_size}, Validation={len(val_ds_raw)}, Test={len(test_ds_raw)}")
 
-    # Save test set to CSV for later re-use
     test_csv_path = f"test_set_{task_name}.csv"
     test_ds_raw.to_pandas().to_csv(test_csv_path, index=False)
     print(f"Test set saved to {test_csv_path}")
@@ -340,7 +339,6 @@ def main():
     short_run = False
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
-    # Name your final output checkpoint directory
     output_checkpoint_dir = (f"{label_model_name}_{task_name}_"
                              f"epochs-{num_epochs}_lr-{lr}_"
                              f"batch-{train_batch_size}x{grad_acc_steps}_"
@@ -363,7 +361,7 @@ def main():
         lora_alpha=32,
         lora_dropout=0,
         bias="none",
-        use_gradient_checkpointing=False,  # for memory efficiency if needed
+        use_gradient_checkpointing=False,
         random_state=3407,
         use_rslora=False,
         loftq_config=None,
@@ -374,7 +372,6 @@ def main():
     # ------------------------------
     map_func = partial(instruction_map_fn, tokenizer=tokenizer, task_type=task_type)
 
-    # Decide how many train/val samples to use: "all" => entire dataset
     train_samples = "all"
     val_samples = "all"
 
@@ -429,10 +426,8 @@ def main():
         config=training_args.to_dict(),
     )
 
-    # Show GPU memory usage
     show_gpu_memory_usage()
 
-    # If short_run is True, do a quick throughput test on 100 steps
     if short_run:
         run_short_test(
             model=model,
@@ -472,7 +467,6 @@ def main():
     print(f"Dynamic eval_steps={eval_steps} (We have ~{num_updates_per_epoch} steps per epoch).")
     print(f"Dynamic save_steps={save_steps} (Checkpoints saved every {save_steps} steps).")
 
-    # Possibly resume from a previous checkpoint
     latest_ckpt = find_latest_checkpoint("outputs")
     if latest_ckpt:
         print(f"Resuming from checkpoint: {latest_ckpt}")
@@ -481,16 +475,13 @@ def main():
         print("No checkpoint found, starting training from scratch.")
         trainer_stats = trainer.train()
 
-    # Save final model
     model.save_pretrained(output_checkpoint_dir)
     tokenizer.save_pretrained(output_checkpoint_dir)
     wandb.save(output_checkpoint_dir)
     print(f"Model and tokenizer saved to {output_checkpoint_dir}")
     wandb.finish()
 
-    # Print final time/memory usage
     show_final_stats(trainer_stats)
-
 
 
 if __name__ == "__main__":
