@@ -1,42 +1,54 @@
 """
-This script fine-tunes a pre-trained language model especially autoregressive language model (CLM)
-such as GPT-2, GPT-3, or Meta-Llama on a custom task. The task can be one of the following:
+Fine-tunes a pre-trained language model (CLM) such as GPT-2, GPT-3, or Meta-Llama on custom tasks:
+ - T-SAD  (Trace anomaly detection)
+ - A-SAD  (Activity out-of-order detection)
+ - S-NAP  (Semantic next-activity prediction)
 
-- T-SAD: Given a trace σ, decide if σ is a valid execution of the underlying process or not, without knowing the behavior allowed in the process. Each row contains a trace (column trace) with a corresponding label (column anomalous) indicating whether the trace represents a valid execution of the underlying process. The set of activities that can occur in the process are also given (column unique_activities).
+Usage:
+    python llama_hf_script.py <TASK_NAME>
+    
+Example:
+    python llama_hf_script.py S-NAP
 
-model_id,revision_id,trace,label,unique_activities,anomalous,id
-c78bef3bc4f043e880c51a5de86f7b33,cf03653c9c664b55a18da5b53ca9cee5,"['Take comprehensive exam', 'Submit course form (at least ECTS)', 'Complete courses', 'Get an international publication', 'Follow seminar on research methodology', 'Give first doctoral seminar', 'Participate in international conference', 'Give second doctoral seminar']",False,"{'Take comprehensive exam', 'Submit course form (at least ECTS)', 'Complete courses', 'Follow seminar on research methodology', 'Give first doctoral seminar', 'Get an international publication', 'Give second doctoral seminar', 'Participate in international conference'}",False,c78bef3bc4f043e880c51a5de86f7b33_cf03653c9c664b55a18da5b53ca9cee5
+Task Description:
+    - T-SAD: Given a trace σ, decide if σ is a valid execution of the underlying process or not, without knowing the behavior allowed in the process. Each row contains a trace (column trace) with a corresponding label (column anomalous) indicating whether the trace represents a valid execution of the underlying process. The set of activities that can occur in the process are also given (column unique_activities).
 
-- A-SAD: Given an eventually-follows relation ef = a ≺ b of a trace σ, decide if ef represents a valid execution order of the two activities a and b that are executed in a process or not, without knowing the behavior allowed in the process.
-Each row contains an eventually-follows relation (column eventually_follows) with a corresponding label (column out_of_order) indicating wether the two activities of the relation were executed in an invalid order (TRUE) or in a valid order (FALSE) according to the underlying process (model). The set of activities that can occur in the process are also given (column unique_activities).
+    model_id,revision_id,trace,label,unique_activities,anomalous,id
+    c78bef3bc4f043e880c51a5de86f7b33,cf03653c9c664b55a18da5b53ca9cee5,"['Take comprehensive exam', 'Submit course form (at least ECTS)', 'Complete courses', 'Get an international publication', 'Follow seminar on research methodology', 'Give first doctoral seminar', 'Participate in international conference', 'Give second doctoral seminar']",False,"{'Take comprehensive exam', 'Submit course form (at least ECTS)', 'Complete courses', 'Follow seminar on research methodology', 'Give first doctoral seminar', 'Get an international publication', 'Give second doctoral seminar', 'Participate in international conference'}",False,c78bef3bc4f043e880c51a5de86f7b33_cf03653c9c664b55a18da5b53ca9cee5
 
-model_id,revision_id,out_of_order,unique_activities,eventually_follows,id
-2b4e4aca49ef4694a290b956fe18eb9b,f9f65a9604b4434996eede7b550b8f8a,True,"{'Register claim', 'Perform assessment', 'Phone garage to authorise repairs', 'Send letter', 'Checks insurance claim', 'Reject claim', 'Schedule payment', 'Check document'}","('Phone garage to authorise repairs', 'Reject claim')",2b4e4aca49ef4694a290b956fe18eb9b_f9f65a9604b4434996eede7b550b8f8a
+    - A-SAD: Given an eventually-follows relation ef = a ≺ b of a trace σ, decide if ef represents a valid execution order of the two activities a and b that are executed in a process or not, without knowing the behavior allowed in the process.
+    Each row contains an eventually-follows relation (column eventually_follows) with a corresponding label (column out_of_order) indicating wether the two activities of the relation were executed in an invalid order (TRUE) or in a valid order (FALSE) according to the underlying process (model). The set of activities that can occur in the process are also given (column unique_activities).
 
-- S-NAP: Given an event log L and a prefix p_k of length k, with 1 < k, predict the next activity a_k+1
-Each row contains a trace prefix (column prefix) with a corresponding next activity (column next) indicating the activity that should be performed next after the last activity of the prefix  according to the trace from which the prefix was generated. The set of activities that can occur in the process are also given (column unique_activities).
+    model_id,revision_id,out_of_order,unique_activities,eventually_follows,id
+    2b4e4aca49ef4694a290b956fe18eb9b,f9f65a9604b4434996eede7b550b8f8a,True,"{'Register claim', 'Perform assessment', 'Phone garage to authorise repairs', 'Send letter', 'Checks insurance claim', 'Reject claim', 'Schedule payment', 'Check document'}","('Phone garage to authorise repairs', 'Reject claim')",2b4e4aca49ef4694a290b956fe18eb9b_f9f65a9604b4434996eede7b550b8f8a
 
-model_id,revision_id,trace,prefix,next,unique_activities,id
-f59a5a5a07b64916bcbd843e48485c0e,11c2f63f1f684c9dabbdb18d5e47bcca,"['mold upper and lower part of the enginge', 'bend front defender', 'wield parts together', 'bend bars for the frame', 'insert outlets and cylinders', 'make seat', 'bend rear defender', 'weld bars together', 'assemble parts']","['mold upper and lower part of the enginge', 'bend front defender', 'wield parts together']",bend bars for the frame,"{'bend bars for the frame', 'weld bars together', 'insert outlets and cylinders', 'bend rear defender', 'wield parts together', 'bend front defender', 'mold upper and lower part of the enginge', 'assemble parts', 'make seat'}",f59a5a5a07b64916bcbd843e48485c0e_11c2f63f1f684c9dabbdb18d5e47bcca
+    - S-NAP: Given an event log L and a prefix p_k of length k, with 1 < k, predict the next activity a_k+1
+    Each row contains a trace prefix (column prefix) with a corresponding next activity (column next) indicating the activity that should be performed next after the last activity of the prefix  according to the trace from which the prefix was generated. The set of activities that can occur in the process are also given (column unique_activities).
 
-On a 40GB A100
-- Consider 8-bit or 16-bit instead of 4-bit quantization if you want more speed and (possibly) better accuracy.
-- Disable gradient checkpointing to avoid extra forward passes.
-- Turn off short_run for a real run.
-- (Optionally) reduce logging overhead and/or do fewer evaluation steps.
-- Possibly try xformers/flash attention for even faster performance.
+    model_id,revision_id,trace,prefix,next,unique_activities,id
+    f59a5a5a07b64916bcbd843e48485c0e,11c2f63f1f684c9dabbdb18d5e47bcca,"['mold upper and lower part of the enginge', 'bend front defender', 'wield parts together', 'bend bars for the frame', 'insert outlets and cylinders', 'make seat', 'bend rear defender', 'weld bars together', 'assemble parts']","['mold upper and lower part of the enginge', 'bend front defender', 'wield parts together']",bend bars for the frame,"{'bend bars for the frame', 'weld bars together', 'insert outlets and cylinders', 'bend rear defender', 'wield parts together', 'bend front defender', 'mold upper and lower part of the enginge', 'assemble parts', 'make seat'}",f59a5a5a07b64916bcbd843e48485c0e_11c2f63f1f684c9dabbdb18d5e47bcca
+
+Notes:
+    On a 40GB A100
+    - Consider 8-bit or 16-bit instead of 4-bit quantization if you want more speed and (possibly) better accuracy.
+    - Disable gradient checkpointing to avoid extra forward passes.
+    - Turn off short_run for a real run.
+    - (Optionally) reduce logging overhead and/or do fewer evaluation steps.
+    - Possibly try xformers/flash attention for even faster performance.
 """
 import os
 import sys
 import time
 import copy
 import datetime
-import pandas as pd
 from functools import partial
 
 import torch
 import numpy as np
+import pandas as pd
+import wandb
 from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
+from sklearn.metrics import precision_recall_fscore_support
 from transformers import (
     AutoModelForSequenceClassification,
     AutoTokenizer,
@@ -46,344 +58,117 @@ from transformers import (
     Trainer,
     EarlyStoppingCallback,
 )
+
 from trl import SFTTrainer
-import wandb
 from unsloth import FastLanguageModel, is_bfloat16_supported
-from sklearn.metrics import precision_recall_fscore_support
+
+from prompt_tokenize import instruction_map_fn
 from llama_fine_tuning_util import load_dataset, print_stats, format_time
 
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+# -------------------------------------------------------------------
+# Environment Setup
+# -------------------------------------------------------------------
+def setup_environment():
+    """
+    Configure environment for minimal logs and faster GPU usage.
+    """
+    os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+    torch.backends.cudnn.benchmark = True
 
-torch.backends.cudnn.benchmark = True
 
-print(torch.cuda.get_device_name(0))
-print(torch.cuda.get_device_capability(0))
-print(torch.cuda.is_available())
-print(torch.cuda.memory_summary())
-
-if not torch.cuda.is_available():
-    print("Warning: No GPU detected. Training might be very slow.")
-else:
-    print(f"Using GPU: {torch.cuda.get_device_name(0)}")
+def print_gpu_info():
+    """
+    Logs information about the current GPU device.
+    """
+    if not torch.cuda.is_available():
+        print("Warning: No GPU detected. Training might be very slow.")
+        return
     
-#-------------------------TASK SELECTION-----------------------------------------------------------
+    gpu_name = torch.cuda.get_device_name(0)
+    gpu_capability = torch.cuda.get_device_capability(0)
+    print(f"Using GPU: {gpu_name}, capability={gpu_capability}")
+    print(torch.cuda.memory_summary())
 
-task_name = sys.argv[1]
 
-task_to_dataset = {
+# -------------------------------------------------------------------
+# Constants / Task Mappings
+# -------------------------------------------------------------------
+TASK_TO_DATASET = {
     "T-SAD": ("data/T_SAD.csv", "TRACE_ANOMALY"),
     "A-SAD": ("data/A_SAD.csv", "OUT_OF_ORDER"),
     "S-NAP": ("data/S_NAP.csv", "NEXT_ACTIVITY"),
 }
 
-if task_name not in task_to_dataset:
-    raise ValueError(f"Unsupported task: {task_name}. Supported tasks: {list(task_to_dataset.keys())}")
 
-dataset_file, task_type = task_to_dataset[task_name]
-
-#-------------------------LOAD THE DATA----------------------------------------------
-"""
-Load the training and validation datasets using the load_trace_data function.
-"""
-# fraction of the dataset to use for training and validation
-# TODO: Set to None for "all" production
-frac = 0.1
-
-raw_train_dataset, raw_val_dataset, raw_test_dataset = load_dataset(dataset_file, task_type, frac)
-train_dataset_size = len(raw_train_dataset)
-
-test_output_file = f"test_set_{task_name}.csv"
-raw_test_dataset.to_csv(test_output_file, index=False)
-print(f"Test set saved to {test_output_file}")
-
-#--------------------------INITIALIZE VARIABLES-----------------------------------------------------------
-"""
-Set up all the key variables for training, such as model parameters, dataset sample sizes, 
-number of epochs, learning rate, batch sizes, and directory for saving checkpoints and logs.
-"""
-model_name = "meta-llama/Meta-Llama-3-8B-Instruct"
-max_seq_length = 5 # Choose any! We auto support RoPE Scaling internally!
-dtype = None # None for auto detection. Float16 for Tesla T4, V100, Bfloat16 for Ampere+
-load_in_4bit = False # Use 4bit quantization to reduce memory usage. Can be False.
-train_batch_size = 2
-gradient_accumulation_steps = 16
-# TODO: Set to 3 for llama production
-epochs = 3
-
-optimizer = "adamw_8bit"
-label_model_name = model_name.replace("/", "_")
-
-train_samples = "all"
-valid_samples = "all"
-
-learning_rate = 1e-5
-eval_batch_size = 4
-timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-log_steps = 50
-
-# min max bounds
-MIN_EVAL_STEPS = 50 
-MAX_EVAL_STEPS = 1000
-MIN_SAVE_STEPS = 50
-MAX_SAVE_STEPS = 1000
-
-# dynamic eval_steps
-num_updates_per_epoch = train_dataset_size // (train_batch_size * gradient_accumulation_steps)
-if train_dataset_size < 10_000:
-    desired_evals_per_epoch = 2
-elif 10_000 <= train_dataset_size <= 100_000:
-    desired_evals_per_epoch = 6
-else:
-    desired_evals_per_epoch = 12
-    
-eval_steps = max(1, num_updates_per_epoch // desired_evals_per_epoch)
-eval_steps = max(MIN_EVAL_STEPS, min(eval_steps, MAX_EVAL_STEPS))
-
-# dynamic save_steps
-if train_dataset_size < 10_000:
-    save_steps = eval_steps * 2 
-elif 10_000 <= train_dataset_size <= 100_000:
-    save_steps = eval_steps
-else:
-    save_steps = max(MIN_SAVE_STEPS, eval_steps // 2)
-    save_steps = min(save_steps, MAX_SAVE_STEPS)
-
-save_total_limit = 5
-
-# TODO: Short run for throughput estimation
-short_run = False
-
-save_dir = (f"{label_model_name}_{task_name}_samples-{train_samples}_epochs-{epochs}_"
-            f"lr-{learning_rate}_batch-{train_batch_size}x{gradient_accumulation_steps}_time-{timestamp}")
-
-
-#-------------------------INITIALIZE MODEL AND TOKENIZER-------------------------
-"""
-Load the pre-trained model and tokenizer using the FastLanguageModel wrapper. 
-Enable options like sequence length, precision, and quantization.
-"""
-model, tokenizer = FastLanguageModel.from_pretrained(
-    model_name=model_name,
-    max_seq_length=max_seq_length,
-    dtype=dtype,
-    load_in_4bit=load_in_4bit,
-    token="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",
-)
-model = FastLanguageModel.get_peft_model(
-    model,
-    # Choose any number > 0 ! Suggested 8, 16, 32, 64, 128
-    r=32,
-    target_modules = ["q_proj", "k_proj", "v_proj", "o_proj",
-                    "gate_proj", "up_proj", "down_proj",],
-    lora_alpha = 32,
-    # Supports any, but = 0 is optimized
-    lora_dropout=0,
-    # Supports any, but = "none" is optimized
-    bias="none",
-    # [NEW] "unsloth" uses 30% less VRAM, fits 2x larger batch sizes!
-    use_gradient_checkpointing=False,
-    random_state=3407,
-    # We support rank stabilized LoRA
-    use_rslora=False,
-    # And LoftQ
-    loftq_config=None,
-)
-
-#-------------------------BUILD THE PROMPT AND TOKENIZE INPUT-------------------------
-"""
-Define functions to prepare the training data by creating prompts and tokenizing inputs/labels.
-"""
-def build_instruction_encoding(example, tokenizer, max_length=512, task_type="TRACE_ANOMALY"):
+# -------------------------------------------------------------------
+# Additional Helper Functions
+# -------------------------------------------------------------------
+def select_and_tokenize_dataset(dataset, n_samples, map_func, columns_to_remove):
     """
-    Returns a dict with input_ids, attention_mask, and labels
-    so that the prompt is masked out (label = -100)
-    and only the final 'answer' tokens are labeled.
+    Optionally select a subset of `n_samples` from `dataset`,
+    then apply `map_func` to tokenize and remove unnecessary columns.
     """
-    ds_label = example["ds_labels"]
-    if task_type == "TRACE_ANOMALY":
-        label_str = "True" if ds_label else "False"
-        prompt_text = f"Set of process activities: {set(example['unique_activities'])}\nTrace: {example['trace']}\nValid: "
-    elif task_type == "OUT_OF_ORDER":
-        label_str = "True" if ds_label else "False"
-        eventually = example["eventually_follows"]
-        prompt_text = f"Set of process activities: {set(example['unique_activities'])}\n1. Activity: {eventually[0]}\n2. Activity: {eventually[1]}\nValid: "
-    elif task_type == "NEXT_ACTIVITY":
-        sorted_acts = sorted(list(example["unique_activities"]))
-        label_idx = ds_label - 1
-        label_str = "[END]" if (label_idx < 0 or label_idx >= len(sorted_acts)) else sorted_acts[label_idx]
-        prompt_text = f"Set of process activities: {sorted_acts}\nSo far we have executed: {example['prefix']}\nNext activity: "
+    if isinstance(n_samples, int) and n_samples > 0:
+        dataset = dataset.select(range(n_samples))
+    elif n_samples == "all":
+        pass
     else:
-        raise ValueError(f"Unknown task_type: {task_type}")
-
-    enc_prompt = tokenizer(prompt_text, add_special_tokens=False)
-    enc_answer = tokenizer(label_str, add_special_tokens=False)
-    input_ids = enc_prompt["input_ids"] + enc_answer["input_ids"]
-    attention_mask = enc_prompt["attention_mask"] + enc_answer["attention_mask"]
-    labels = ([-100] * len(enc_prompt["input_ids"])) + enc_answer["input_ids"]
+        raise ValueError(f"Invalid n_samples: {n_samples} (must be int>0 or 'all')")
     
-    input_ids = input_ids[:max_length]
-    attention_mask = attention_mask[:max_length]
-    labels = labels[:max_length]
-    
-    return {"input_ids": input_ids, 
-            "attention_mask": attention_mask, 
-            "labels": labels}
+    return dataset.map(map_func, batched=True, remove_columns=columns_to_remove)
 
-def instruction_map_fn(examples, tokenizer, task_type):
+
+def dynamic_eval_steps(num_updates_per_epoch):
     """
-    Map function to tokenize inputs and labels for the training dataset.
+    Decide how often to run eval within each epoch.
     """
-    results = {"input_ids": [], "attention_mask": [], "labels": []}
-    for i in range(len(examples["ds_labels"])):
-        record = {"ds_labels": examples["ds_labels"][i], "unique_activities": examples["unique_activities"][i]}
-        if task_type == "TRACE_ANOMALY":
-            record["trace"] = examples["trace"][i]
-        elif task_type == "OUT_OF_ORDER":
-            record["eventually_follows"] = examples["eventually_follows"][i]
-        elif task_type == "NEXT_ACTIVITY":
-            record["prefix"] = examples["prefix"][i]
-        out = build_instruction_encoding(record, tokenizer=tokenizer, max_length=512, task_type=task_type)
-        results["input_ids"].append(out["input_ids"])
-        results["attention_mask"].append(out["attention_mask"])
-        results["labels"].append(out["labels"])
-    return results
+    MIN_EVAL_STEPS = 50
+    MAX_EVAL_STEPS = 1000
+    # Simple logic example
+    desired_evals_per_epoch = 2
+    if num_updates_per_epoch >= 10_000:
+        desired_evals_per_epoch = 6
+    elif num_updates_per_epoch >= 100_000:
+        desired_evals_per_epoch = 12
 
-# Wrap partial so we can pass the tokenizer
-map_func = partial(instruction_map_fn, tokenizer=tokenizer, task_type=task_type)
+    steps = max(1, num_updates_per_epoch // desired_evals_per_epoch)
+    steps = max(MIN_EVAL_STEPS, min(steps, MAX_EVAL_STEPS))
+    return steps
 
-# Truncate training dataset if needed
-if isinstance(train_samples, int) and train_samples > 0:
-    raw_train_dataset = raw_train_dataset.select(range(train_samples))
-elif train_samples == "all":
-    pass  # Keep the original dataset unchanged
-else:
-    raise ValueError("Invalid 'train_samples' value. Must be >0 or 'all'.")
 
-# Truncate validation dataset if needed
-if isinstance(valid_samples, int) and valid_samples > 0:
-    raw_val_dataset = raw_val_dataset.select(range(valid_samples))
-elif valid_samples == "all":
-    pass  # Keep the original dataset unchanged
-else:
-    raise ValueError("Invalid 'valid_samples' value. Must be >0 or 'all'.")
-
-# Remove irrelevant columns
-columns_to_remove = ["model_id", "revision_id", "id", "num_unique_activities"]
-train_ds = raw_train_dataset.map(map_func, batched=True, remove_columns=columns_to_remove)
-val_ds   = raw_val_dataset.map(map_func,   batched=True, remove_columns=columns_to_remove)
-
-#-------------------------CUSTOM DATA COLLATOR-------------------------
-def causal_data_collator(features, tokenizer):
+def dynamic_save_steps(num_updates_per_epoch, eval_steps, train_size):
     """
-    Pads input_ids, attention_mask, and labels to the same length across the batch.
-    We pad prompt tokens with -100 for labels so they're ignored in the loss.
+    Decide how often to save checkpoints based on the dataset size,
+    combining logic with eval_steps for consistency.
     """
-    batch_input_ids = [f["input_ids"] for f in features]
-    batch_attention = [f["attention_mask"] for f in features]
-    batch_labels = [f["labels"] for f in features]
-    padded = tokenizer.pad(
-        {
-            "input_ids": batch_input_ids,
-            "attention_mask": batch_attention
-        },
-        padding=True,
-        return_tensors="pt",
-    )
-    
-    max_length = padded["input_ids"].size(1)
-    padded_labels = []
-    for lbl in batch_labels:
-        num_to_pad = max_length - len(lbl)
-        padded_labels.append(lbl + [-100] * num_to_pad)
-    padded["labels"] = torch.tensor(padded_labels, dtype=torch.long)
-    return padded
+    MIN_SAVE_STEPS = 50
+    MAX_SAVE_STEPS = 1000
 
-def my_collator(features):
-    return causal_data_collator(features, tokenizer)
+    if train_size < 10_000:
+        return eval_steps * 2
+    elif 10_000 <= train_size <= 100_000:
+        return eval_steps
+    else:
+        half = max(MIN_SAVE_STEPS, eval_steps // 2)
+        return min(half, MAX_SAVE_STEPS)
 
 
-#-------------------------CUSTOM METRICS-------------------------
-def compute_metrics(eval_pred):
-    logits, labels = eval_pred
-    predictions = np.argmax(logits, axis=-1)
-    acc = accuracy_score(labels, predictions)
-    f1 = f1_score(labels, predictions)
-    precision = precision_score(labels, predictions)
-    recall = recall_score(labels, predictions)
-    return {
-        'accuracy': acc,
-        'f1': f1,
-        'precision': precision,
-        'recall': recall,
-    }
+def show_gpu_memory_usage():
+    """
+    Logs GPU memory usage at script start. 
+    """
+    gpu_stats = torch.cuda.get_device_properties(0)
+    max_memory = round(gpu_stats.total_memory / 1024 / 1024 / 1024, 3)
+    start_memory = round(torch.cuda.max_memory_reserved() / 1024 / 1024 / 1024, 3)
+    print(f"GPU = {gpu_stats.name}, max={max_memory}GB, reserved={start_memory}GB")
 
-#-------------------------CUSTOM CALLBACKS-------------------------
-"""
-Define a custom callback to rename checkpoint directories during training.
-"""
-class CustomCheckpointCallback(TrainerCallback):
-    def on_save(self, args, state, control, **kwargs):
-        checkpoint_dir = os.path.join(args.output_dir, f"checkpoint-{state.global_step}")
-        custom_name = f"{args.output_dir}/{save_dir}_step-{state.global_step}"
-        if os.path.exists(checkpoint_dir):
-            os.rename(checkpoint_dir, custom_name)
-            print(f"Renamed checkpoint: {checkpoint_dir} -> {custom_name}")
-        with open(os.path.join(args.output_dir, "latest_checkpoint.txt"), "w") as f:
-            f.write(custom_name)
 
-class CustomLoggingCallback(TrainerCallback):
-    def on_log(self, args, state, control, logs=None, **kwargs):
-        if logs is not None:
-            loss = logs.get("loss")
-            grad_norm = logs.get("grad_norm")
-            lr = logs.get("learning_rate")
-            epoch = logs.get("epoch")
-            
-            if loss is not None and grad_norm is not None and lr is not None and epoch is not None:
-                print(f"{{'loss': {loss:.4f}, 'grad_norm': {grad_norm}, 'learning_rate': {lr}, 'epoch': {epoch:.2f}}}")
+def run_short_test(model, tokenizer, train_dataset, val_dataset, training_args):
+    """
+    Runs a short run for throughput estimation on 100 steps, with no real training goal.
+    """
+    print("Running a short run for throughput estimation...")
 
-#-------------------------TRAINING ARGUMENTS-------------------------
-"""
-Configure training arguments and initialize the trainer with the model, datasets, and data collator.
-"""
-training_args = TrainingArguments(
-    per_device_train_batch_size=train_batch_size,
-    gradient_accumulation_steps=gradient_accumulation_steps,
-    num_train_epochs=epochs,
-    learning_rate=learning_rate,
-    fp16 = not is_bfloat16_supported(),
-    bf16 = is_bfloat16_supported(),
-    optim=optimizer,
-    weight_decay=0.01,
-    lr_scheduler_type = "linear",
-    seed=3407,
-    logging_steps=log_steps,
-    output_dir="outputs",
-    report_to="wandb",
-    per_device_eval_batch_size = eval_batch_size,
-    eval_strategy = IntervalStrategy.STEPS,
-    eval_steps = eval_steps,
-    save_strategy=IntervalStrategy.STEPS,
-    save_steps=save_steps,
-    save_total_limit=5, 
-)
-
-#------------------------- INIT WANDB RUN -------------------------
-wandb.init(
-    project="fine-tune-model",
-    name=f"{label_model_name}_{task_name}",
-    config=training_args.to_dict(),
-)
-
-# ------------------------- GPU MEMORY -------------------------
-gpu_stats = torch.cuda.get_device_properties(0)
-start_gpu_memory = round(torch.cuda.max_memory_reserved() / 1024 / 1024 / 1024, 3)
-max_memory = round(gpu_stats.total_memory / 1024 / 1024 / 1024, 3)
-print(f"GPU = {gpu_stats.name}. Max memory = {max_memory} GB.")
-print(f"{start_gpu_memory} GB of memory reserved.")
-
-#------------------------- SHORT RUN (THROUGHPUT ESTIMATION) -------------------------
-if short_run == True:
     short_run_args = copy.deepcopy(training_args)
     short_run_args.num_train_epochs = 0
     short_run_args.max_steps = 100
@@ -395,87 +180,318 @@ if short_run == True:
         model=model,
         args=short_run_args,
         tokenizer=tokenizer,
-        train_dataset=train_ds,
-        eval_dataset=val_ds,
-        data_collator=my_collator,
+        train_dataset=train_dataset,
+        eval_dataset=val_dataset,
+        data_collator=partial(causal_data_collator, tokenizer=tokenizer),
     )
 
-    print("Measuring throughput on 100 steps...")
     start_time = time.time()
     short_run_trainer.train()
-    warmup_time = time.time() - start_time
-    print(f"Time for 100 steps: {warmup_time:.2f} seconds")
+    elapsed = time.time() - start_time
+    print(f"Time for 100 steps: {elapsed:.2f} seconds")
 
-    steps_per_epoch = len(train_ds) // (train_batch_size * gradient_accumulation_steps)
-    total_steps = steps_per_epoch * epochs
-    estimated_total_time_seconds = (warmup_time / 100) * total_steps
-    print(f"Estimated total fine-tuning time: {format_time(estimated_total_time_seconds)}")
+    steps_per_epoch = len(train_dataset) // (training_args.per_device_train_batch_size * training_args.gradient_accumulation_steps)
+    total_steps = steps_per_epoch * training_args.num_train_epochs
+    est_seconds = (elapsed / 100) * total_steps
+    print(f"Estimated total fine-tuning time: {format_time(est_seconds)}")
 
-    wandb.log({"estimated_total_time_minutes": estimated_total_time_seconds / 60})
 
-#-------------------------TRAIN THE MODEL--------------------------------------------
-full_run_args = copy.deepcopy(training_args)
-full_run_args.max_steps = -1
-full_run_args.num_train_epochs = epochs
+def find_latest_checkpoint(output_dir):
+    """
+    Finds the most recent checkpoint in `output_dir`.
+    Returns the path or None if none is found.
+    """
+    if not os.path.exists(output_dir):
+        return None
+    checkpoints = [d for d in os.listdir(output_dir) if "step-" in d]
+    if not checkpoints:
+        return None
+    return os.path.join(output_dir, sorted(checkpoints, key=lambda x: int(x.split('-')[-1]))[-1])
 
-# Initialize and run the trainer
-trainer = SFTTrainer(
-    model=model,
-    args=full_run_args,
-    tokenizer=tokenizer,
-    train_dataset=train_ds,
-    eval_dataset=val_ds,
-    data_collator=my_collator,
-)
 
-# Add the custom checkpoint callback
-trainer.add_callback(CustomCheckpointCallback())
-trainer.add_callback(CustomLoggingCallback())
-trainer.add_callback(EarlyStoppingCallback(early_stopping_patience=3))
+def show_final_stats(trainer_stats):
+    """
+    Prints time and memory usage from the trainer stats object.
+    """
+    if not trainer_stats:
+        return
+    used_memory = round(torch.cuda.max_memory_reserved() / 1024 / 1024 / 1024, 3)
+    runtime = trainer_stats.metrics.get('train_runtime', 0.0)
+    print(f"{runtime} seconds used for training.")
+    print(f"{round(runtime/60, 2)} minutes used for training.")
+    print(f"Peak reserved memory = {used_memory} GB.")
 
-# Print dataset statistics
-print_stats("Train", raw_train_dataset)
-print_stats("Validation", raw_val_dataset)
-print_stats("Test", raw_test_dataset)
 
-# Print Log steps
-print(f"Log steps: {log_steps}")
+# -------------------------------------------------------------------
+# Collator & Custom Callbacks
+# -------------------------------------------------------------------
+def causal_data_collator(features, tokenizer):
+    """
+    Pads input_ids, attention_mask, and labels to the same length across the batch.
+    We pad prompt tokens with -100 for labels so they're ignored in the cross-entropy loss.
+    """
+    batch_input_ids = [f["input_ids"] for f in features]
+    batch_attention = [f["attention_mask"] for f in features]
+    batch_labels = [f["labels"] for f in features]
 
-# Print dynamic eval_steps and save_steps
-print(f"Dynamic eval_steps={eval_steps}. (We have ~{num_updates_per_epoch} training steps per epoch.)")
-print(f"Dynamic save_steps={save_steps}. (Checkpoints will be saved every {save_steps} steps.)")
+    padded = tokenizer.pad(
+        {
+            "input_ids": batch_input_ids,
+            "attention_mask": batch_attention
+        },
+        padding=True,
+        return_tensors="pt",
+    )
 
-# Scan the output directory for the most recent checkpoint
-latest_checkpoint = None
-trainer_stats = None
-if os.path.exists("outputs"):
-    checkpoints = [d for d in os.listdir("outputs") if "step-" in d]
-    if checkpoints:
-        latest_checkpoint = os.path.join("outputs", sorted(checkpoints, key=lambda x: int(x.split('-')[-1]))[-1])
+    max_length = padded["input_ids"].size(1)
+    padded_labels = []
+    for lbl in batch_labels:
+        num_to_pad = max_length - len(lbl)
+        padded_labels.append(lbl + ([-100] * num_to_pad))
 
-if latest_checkpoint:
-    print(f"Resuming from checkpoint: {latest_checkpoint}")
-    trainer_stats = trainer.train(resume_from_checkpoint=latest_checkpoint)
-else:
-    print("No checkpoint found, starting training from scratch.")
-    trainer_stats = trainer.train()
+    padded["labels"] = torch.tensor(padded_labels, dtype=torch.long)
+    return padded
 
-#------------------------- SAVE THE MODEL -------------------------
-# Save the fine-tuned model and tokenizer.
-model.save_pretrained(save_dir)
-tokenizer.save_pretrained(save_dir)
-wandb.save(save_dir)
-print(f"Model and tokenizer saved to {save_dir}")
-wandb.finish()
 
-#------------------------- SHOW FINAL MEMORY AND TIME STATS -------------------------
-used_memory = round(torch.cuda.max_memory_reserved() / 1024 / 1024 / 1024, 3)
-used_memory_for_lora = round(used_memory - start_gpu_memory, 3)
-used_percentage = round(used_memory         /max_memory*100, 3)
-lora_percentage = round(used_memory_for_lora/max_memory*100, 3)
-print(f"{trainer_stats.metrics['train_runtime']} seconds used for training.")
-print(f"{round(trainer_stats.metrics['train_runtime']/60, 2)} minutes used for training.")
-print(f"Peak reserved memory = {used_memory} GB.")
-print(f"Peak reserved memory for training = {used_memory_for_lora} GB.")
-print(f"Peak reserved memory % of max memory = {used_percentage} %.")
-print(f"Peak reserved memory for training % of max memory = {lora_percentage} %.")
+class CustomCheckpointCallback(TrainerCallback):
+    """
+    Renames checkpoint directories for clarity during training.
+    """
+    def __init__(self, save_dir):
+        self.save_dir = save_dir
+
+    def on_save(self, args, state, control, **kwargs):
+        checkpoint_dir = os.path.join(args.output_dir, f"checkpoint-{state.global_step}")
+        custom_name = f"{args.output_dir}/{self.save_dir}_step-{state.global_step}"
+        if os.path.exists(checkpoint_dir):
+            os.rename(checkpoint_dir, custom_name)
+            print(f"Renamed checkpoint: {checkpoint_dir} -> {custom_name}")
+        with open(os.path.join(args.output_dir, "latest_checkpoint.txt"), "w") as f:
+            f.write(custom_name)
+
+
+class CustomLoggingCallback(TrainerCallback):
+    """
+    Logs custom information, such as loss/grad-norm, at each log step.
+    """
+    def on_log(self, args, state, control, logs=None, **kwargs):
+        if logs:
+            loss = logs.get("loss")
+            grad_norm = logs.get("grad_norm")
+            lr = logs.get("learning_rate")
+            epoch = logs.get("epoch")
+
+            if all(v is not None for v in [loss, grad_norm, lr, epoch]):
+                print(f"{{'loss': {loss:.4f}, 'grad_norm': {grad_norm}, "
+                      f"'learning_rate': {lr}, 'epoch': {epoch:.2f}}}")
+
+
+# -------------------------------------------------------------------
+# Main Function
+# -------------------------------------------------------------------
+def main():
+    """
+    Main entry point for fine-tuning a Llama-based model on T-SAD, A-SAD, or S-NAP tasks.
+    """
+    setup_environment()
+    print_gpu_info()
+
+    # ------------------------------ 
+    # Parse task from command line
+    # ------------------------------
+    if len(sys.argv) < 2:
+        print("Usage: python llama_hf_script.py <TASK_NAME>")
+        sys.exit(1)
+    task_name = sys.argv[1]
+
+    if task_name not in TASK_TO_DATASET:
+        raise ValueError(f"Unsupported task: {task_name}. Choose from {list(TASK_TO_DATASET.keys())}")
+
+    dataset_file, task_type = TASK_TO_DATASET[task_name]
+
+    # ------------------------------ 
+    # Load dataset
+    # ------------------------------
+    # TODO: Adjust fraction for faster testing
+    fraction = 0.01
+    train_ds_raw, val_ds_raw, test_ds_raw = load_dataset(dataset_file, task_type, fraction)
+    train_size = len(train_ds_raw)
+    print(f"Train dataset size: {train_size}, Validation={len(val_ds_raw)}, Test={len(test_ds_raw)}")
+
+    # Save test set to CSV for later re-use
+    test_csv_path = f"test_set_{task_name}.csv"
+    test_ds_raw.to_pandas().to_csv(test_csv_path, index=False)
+    print(f"Test set saved to {test_csv_path}")
+
+    # ------------------------------ 
+    # Model & Training Config
+    # ------------------------------
+    model_name = "meta-llama/Meta-Llama-3-8B-Instruct"
+    label_model_name = model_name.replace("/", "_")
+
+    max_seq_length = 512
+    train_batch_size = 2
+    grad_acc_steps = 16
+    num_epochs = 3
+    lr = 1e-5
+    eval_batch_size = 16
+    use_4bit_quant = False
+
+    short_run = False
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+
+    # Name your final output checkpoint directory
+    output_checkpoint_dir = (f"{label_model_name}_{task_name}_"
+                             f"epochs-{num_epochs}_lr-{lr}_"
+                             f"batch-{train_batch_size}x{grad_acc_steps}_"
+                             f"time-{timestamp}")
+
+    # ------------------------------ 
+    # Prepare Model & Tokenizer
+    # ------------------------------
+    model, tokenizer = FastLanguageModel.from_pretrained(
+        model_name=model_name,
+        max_seq_length=max_seq_length,
+        dtype=None if not is_bfloat16_supported() else torch.bfloat16,
+        load_in_4bit=use_4bit_quant,
+        token="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",
+    )
+    model = FastLanguageModel.get_peft_model(
+        base_model=model,
+        r=32,
+        target_modules=["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
+        lora_alpha=32,
+        lora_dropout=0,
+        bias="none",
+        use_gradient_checkpointing=False,  # for memory efficiency if needed
+        random_state=3407,
+        use_rslora=False,
+        loftq_config=None,
+    )
+
+    # ------------------------------ 
+    # Tokenize & Prepare Datasets
+    # ------------------------------
+    map_func = partial(instruction_map_fn, tokenizer=tokenizer, task_type=task_type)
+
+    # Decide how many train/val samples to use: "all" => entire dataset
+    train_samples = "all"
+    val_samples = "all"
+
+    train_ds = select_and_tokenize_dataset(
+        dataset=train_ds_raw,
+        n_samples=train_samples,
+        map_func=map_func,
+        columns_to_remove=["model_id", "revision_id", "id", "num_unique_activities"]
+    )
+    val_ds = select_and_tokenize_dataset(
+        dataset=val_ds_raw,
+        n_samples=val_samples,
+        map_func=map_func,
+        columns_to_remove=["model_id", "revision_id", "id", "num_unique_activities"]
+    )
+
+    # ------------------------------ 
+    # Training Arguments
+    # ------------------------------
+    num_updates_per_epoch = len(train_ds_raw) // (train_batch_size * grad_acc_steps)
+    eval_steps = dynamic_eval_steps(num_updates_per_epoch)
+    save_steps = dynamic_save_steps(num_updates_per_epoch, eval_steps, train_size)
+
+    training_args = TrainingArguments(
+        per_device_train_batch_size=train_batch_size,
+        gradient_accumulation_steps=grad_acc_steps,
+        num_train_epochs=num_epochs,
+        learning_rate=lr,
+        fp16=(not is_bfloat16_supported()),
+        bf16=is_bfloat16_supported(),
+        optim="adamw_8bit",
+        weight_decay=0.01,
+        lr_scheduler_type="linear",
+        seed=3407,
+        logging_steps=50,
+        output_dir="outputs",
+        report_to="wandb",
+        per_device_eval_batch_size=eval_batch_size,
+        eval_strategy=IntervalStrategy.STEPS,
+        eval_steps=eval_steps,
+        save_strategy=IntervalStrategy.STEPS,
+        save_steps=save_steps,
+        save_total_limit=5,
+    )
+
+    # ------------------------------ 
+    # Init Weights & Biases
+    # ------------------------------
+    wandb.init(
+        project="fine-tune-model",
+        name=f"{label_model_name}_{task_name}",
+        config=training_args.to_dict(),
+    )
+
+    # Show GPU memory usage
+    show_gpu_memory_usage()
+
+    # If short_run is True, do a quick throughput test on 100 steps
+    if short_run:
+        run_short_test(
+            model=model,
+            tokenizer=tokenizer,
+            train_dataset=train_ds,
+            val_dataset=val_ds,
+            training_args=training_args
+        )
+
+    # ------------------------------ 
+    # SFTTrainer Setup
+    # ------------------------------
+    full_run_args = copy.deepcopy(training_args)
+    full_run_args.max_steps = -1
+    full_run_args.num_train_epochs = num_epochs
+
+    trainer = SFTTrainer(
+        model=model,
+        args=full_run_args,
+        tokenizer=tokenizer,
+        train_dataset=train_ds,
+        eval_dataset=val_ds,
+        data_collator=partial(causal_data_collator, tokenizer=tokenizer),
+    )
+
+    trainer.add_callback(CustomCheckpointCallback(output_checkpoint_dir))
+    trainer.add_callback(CustomLoggingCallback())
+
+    # ------------------------------ 
+    # Print Dataset Stats
+    # ------------------------------
+    print_stats("Train", train_ds_raw)
+    print_stats("Validation", val_ds_raw)
+    print_stats("Test", test_ds_raw)
+
+    # Log dynamic steps
+    print(f"Dynamic eval_steps={eval_steps} (We have ~{num_updates_per_epoch} steps per epoch).")
+    print(f"Dynamic save_steps={save_steps} (Checkpoints saved every {save_steps} steps).")
+
+    # Possibly resume from a previous checkpoint
+    latest_ckpt = find_latest_checkpoint("outputs")
+    if latest_ckpt:
+        print(f"Resuming from checkpoint: {latest_ckpt}")
+        trainer_stats = trainer.train(resume_from_checkpoint=latest_ckpt)
+    else:
+        print("No checkpoint found, starting training from scratch.")
+        trainer_stats = trainer.train()
+
+    # Save final model
+    model.save_pretrained(output_checkpoint_dir)
+    tokenizer.save_pretrained(output_checkpoint_dir)
+    wandb.save(output_checkpoint_dir)
+    print(f"Model and tokenizer saved to {output_checkpoint_dir}")
+    wandb.finish()
+
+    # Print final time/memory usage
+    show_final_stats(trainer_stats)
+
+
+
+if __name__ == "__main__":
+    main()

@@ -1,3 +1,5 @@
+import ast
+import re
 import sys
 import os
 import torch
@@ -8,7 +10,7 @@ from unsloth import FastLanguageModel
 from datasets import Dataset
 import numpy as np
 
-from llama_fine_tuning_util import load_dataset, print_stats
+from llama_fine_tuning_util import load_dataset, print_stats, setify
 
 tqdm.pandas()
 
@@ -36,9 +38,18 @@ model, tokenizer = FastLanguageModel.from_pretrained(
 )
 
 torch.cuda.empty_cache()
-
 FastLanguageModel.for_inference(model)
 model.eval()
+
+def parse_malformed_list(value):
+    try:
+        if isinstance(value, str) and value.startswith("[") and value.endswith("]"):
+            items = re.findall(r"'([^']*)'", value)
+            return items
+        return value
+    except Exception as e:
+        print(f"Error parsing value: {value} -> {e}")
+        return None
 
 # T-SAD,A-SAD logic => "ds_labels" is bool
 def generate_binary_output(prompt):
@@ -46,13 +57,14 @@ def generate_binary_output(prompt):
     Generates binary predictions (True/False) based on the model's output.
     """
     inputs = tokenizer(prompt, return_tensors="pt").to("cuda")
-    output_tokens = model.generate(
-        input_ids=inputs["input_ids"],
-        attention_mask=inputs["attention_mask"],
-        max_new_tokens=5,
-        return_dict_in_generate=True,
-        output_scores=True,
-    )
+    with torch.no_grad():
+        output_tokens = model.generate(
+            input_ids=inputs["input_ids"],
+            attention_mask=inputs["attention_mask"],
+            max_new_tokens=5,
+            return_dict_in_generate=True,
+            output_scores=True,
+        )
     decoded = tokenizer.batch_decode(output_tokens.sequences, skip_special_tokens=True)
     decoded_text = decoded[0].strip().lower()
     if "true" in decoded_text:
@@ -64,33 +76,18 @@ def generate_binary_output(prompt):
     #print(tokenizer.decode(output_tokens[0][0]))
     return False
 
-def generate_activity_output(prompt, activities) -> str:
-    """
-    For S-NAP (next activity).
-    E.g., returns one of the actual `activities` or "[END]".
-    """
+def generate_next_activity(prompt):
     inputs = tokenizer(prompt, return_tensors="pt").to("cuda")
-    outputs = model.generate(
-        input_ids=inputs["input_ids"],
-        attention_mask=inputs["attention_mask"],
-        max_new_tokens=5,
-        return_dict_in_generate=True,
-        output_scores=True,
-    )
-    generated = tokenizer.batch_decode(outputs.sequences[:, inputs["input_ids"].shape[1]:], 
-                                       skip_special_tokens=True)
-    text = generated[0]
-
-    # Check if it contains something like "A", "B", "C"
-    alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-    for letter in alphabet:
-        if letter in text:
-            idx = alphabet.index(letter)
-            if idx < len(activities):
-                return activities[idx]
-            else:
-                return "[END]"
-    return "[END]"
+    with torch.no_grad():
+        output_tokens = model.generate(
+            input_ids=inputs["input_ids"],
+            attention_mask=inputs["attention_mask"],
+            max_new_tokens=5,
+            return_dict_in_generate=True,
+            output_scores=True,
+        )
+    decoded = tokenizer.batch_decode(output_tokens.sequences[:, inputs["input_ids"].shape[1]:], skip_special_tokens=True)
+    return decoded[0].strip()
 
 def compute_y(example):
     """
@@ -98,7 +95,6 @@ def compute_y(example):
       - "TRACE_ANOMALY" → T-SAD uses `trace`
       - "OUT_OF_ORDER"  → A-SAD uses `eventually_follows`
       - "NEXT_ACTIVITY" → S-NAP uses `prefix`
-    Then calls generate_binary_output to get "True"/"False".
     """
     if dataset_task == "TRACE_ANOMALY":  # T-SAD
         trace = example["trace"]
@@ -108,6 +104,7 @@ def compute_y(example):
             "Valid: "
         )
         example["pred_label"] = generate_binary_output(prompt)
+        #print(f"prompt: {prompt}, pred_label: {example['pred_label']}")
     elif dataset_task == "OUT_OF_ORDER":  # A-SAD
         ev = example["eventually_follows"]  
         prompt = (
@@ -117,15 +114,20 @@ def compute_y(example):
             "Valid: "
         )
         example["pred_label"] = generate_binary_output(prompt)
+        #print(f"prompt: {prompt}, pred_label: {example['pred_label']}")
     elif dataset_task == "NEXT_ACTIVITY":  # S-NAP
-        sorted_acts = sorted(list(example["unique_activities"]))
+        local_acts = sorted(set(list(example["unique_activities"])))
+        if "[END]" not in local_acts:
+            local_acts.append("[END]")
+
         prefix = example["prefix"]
         prompt = (
-            f"Set of process activities: {sorted_acts}\n"
-            f"So far we have executed: {prefix}\n"
+            f"List of activities: {local_acts}\n"
+            f"Sequence of activities: {prefix}\n"
             "Next activity: "
         )
-        example["pred_label"] = generate_activity_output(prompt, sorted_acts)
+        example["pred_label"] = generate_next_activity(prompt)
+        #print(f"prompt: {prompt}, pred_label: {example['pred_label']}")
     else:
         example["pred_label"] = None
 
@@ -141,47 +143,80 @@ def run_predictions(ds: Dataset) -> list:
 
 def evaluate(ds: Dataset, predicted_labels: list):
     """
-    Computes micro & macro precision, recall, and F1 scores.
+    Compute metrics for T-SAD / A-SAD (boolean classification) or for S-NAP (string match).
     """
-    true_labels = np.array(ds["ds_labels"])
-    predicted_labels = np.array(predicted_labels)
+    if dataset_task in ["TRACE_ANOMALY", "OUT_OF_ORDER"]:
+        true_labels = np.array(ds["ds_labels"])
+        predicted_labels = np.array(predicted_labels)
 
-    precision_micro, recall_micro, f1_micro, _ = precision_recall_fscore_support(
-        true_labels, predicted_labels, average='micro', zero_division=0
-    )
+        precision_micro, recall_micro, f1_micro, _ = precision_recall_fscore_support(
+            true_labels, predicted_labels, average='micro', zero_division=0
+        )
 
-    precision_macro, recall_macro, f1_macro, _ = precision_recall_fscore_support(
-        true_labels, predicted_labels, average='macro', zero_division=0
-    )
+        precision_macro, recall_macro, f1_macro, _ = precision_recall_fscore_support(
+            true_labels, predicted_labels, average='macro', zero_division=0
+        )
 
-    metrics = {
-        "precision mic": [precision_micro],
-        "recall mic": [recall_micro],
-        "f1 mic": [f1_micro],
-        "precision mac": [precision_macro],
-        "recall mac": [recall_macro],
-        "f1 mac": [f1_macro],
-    }
-    
-    df = pd.DataFrame(metrics)
-    return df
+        return pd.DataFrame({
+            "precision mic": [precision_micro],
+            "recall mic": [recall_micro],
+            "f1 mic": [f1_micro],
+            "precision mac": [precision_macro],
+            "recall mac": [recall_macro],
+            "f1 mac": [f1_macro],
+        })
+    elif dataset_task == "NEXT_ACTIVITY":
+        gold_ids, pred_ids = [], []
+        for i in range(len(ds)):
+            local_acts = sorted(list(ds[i]["unique_activities"]))
+            if "[END]" not in local_acts:
+                local_acts.append("[END]")
 
+            gold = ds[i]["next"]
+            pred = predicted_labels[i]
+            
+            print(f"gold: {gold}, pred: {pred}")
 
-# Fraction Size T-SAD and A-SAD 300k samples, using 10-20% of the dataset should be a good starting point
-# Fraction Size S-NAP 60k to 120k samples, using 5-10% of the dataset should be a good starting point
+            try:
+                gold_idx = local_acts.index(gold)
+            except ValueError:
+                gold_idx = -1
+            try:
+                pred_idx = local_acts.index(pred)
+            except ValueError:
+                pred_idx = -1
 
-test_set_file = f"test_set_{task_name}.csv"
-if not os.path.exists(test_set_file):
-    # TODO: adjust frac
-    frac = None
-    train_ds, val_ds, test_ds = load_dataset(dataset_file, dataset_task, frac=frac)
-else:
-    # 0.01 frac Total samples: 307
-    test_df = pd.read_csv(test_set_file)
-    test_ds = Dataset.from_pandas(test_df)
+            gold_ids.append(gold_idx)
+            pred_ids.append(pred_idx)
 
-# print the number of samples used for evaluation
-print(f"Number of test_ds samples used for evaluation: {len(test_ds)}")
+        gold_arr = np.array(gold_ids)
+        pred_arr = np.array(pred_ids)
+        mask = (gold_arr != -1) & (pred_arr != -1)
+        gold_arr = gold_arr[mask]
+        pred_arr = pred_arr[mask]
+
+        precision_micro, recall_micro, f1_micro, _ = precision_recall_fscore_support(
+            gold_arr, pred_arr, average='micro', zero_division=0
+        )
+        precision_macro, recall_macro, f1_macro, _ = precision_recall_fscore_support(
+            gold_arr, pred_arr, average='macro', zero_division=0
+        )
+        return pd.DataFrame({
+            "precision mic": [precision_micro],
+            "recall mic": [recall_micro],
+            "f1 mic": [f1_micro],
+            "precision mac": [precision_macro],
+            "recall mac": [recall_macro],
+            "f1 mac": [f1_macro],
+        })
+        
+# ------------- Main ----------------
+
+# TODO: adjust frac if you want to test on a smaller fraction of the dataset
+frac = 0.01
+_, _, test_ds = load_dataset(dataset_file, dataset_task, frac=frac)
+
+# print stats used for test
 print_stats("Test", test_ds)
 
 # Predict on test dataset

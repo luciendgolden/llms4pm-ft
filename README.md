@@ -13,3 +13,10 @@ Here's how your hyperparameters align with the desired settings:
 | **Gradient Accumulation**   | 16                            | N/A                   |
 | **Effective Batch Size**    | 32                            | 32                    |
 | **Number of Epochs**        | 3                             | 10                    |
+
+## Install
+
+```sh
+pip install -r requirements.txt
+pip install "unsloth[colab-new] @ git+https://github.com/unslothai/unsloth.git"
+```
