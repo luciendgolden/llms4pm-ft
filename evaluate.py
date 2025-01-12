@@ -32,7 +32,7 @@ dataset_file, dataset_task = task_to_dataset[task_name]
 # Load fine-tuned model
 model, tokenizer = FastLanguageModel.from_pretrained(
     model_name=model_dir,
-    max_seq_length=128, # Choose any! We auto support RoPE Scaling internally!
+    max_seq_length=5, # Choose any! We auto support RoPE Scaling internally!
     dtype=None,
     load_in_4bit=True,
 )
@@ -127,7 +127,6 @@ def compute_y(example):
             "Next activity: "
         )
         example["pred_label"] = generate_next_activity(prompt)
-        #print(f"prompt: {prompt}, pred_label: {example['pred_label']}")
     else:
         example["pred_label"] = None
 
@@ -168,15 +167,13 @@ def evaluate(ds: Dataset, predicted_labels: list):
     elif dataset_task == "NEXT_ACTIVITY":
         gold_ids, pred_ids = [], []
         for i in range(len(ds)):
-            local_acts = sorted(list(ds[i]["unique_activities"]))
+            local_acts = sorted(set(list(ds[i]["unique_activities"])))
             if "[END]" not in local_acts:
                 local_acts.append("[END]")
 
             gold = ds[i]["next"]
             pred = predicted_labels[i]
             
-            print(f"gold: {gold}, pred: {pred}")
-
             try:
                 gold_idx = local_acts.index(gold)
             except ValueError:
@@ -185,6 +182,11 @@ def evaluate(ds: Dataset, predicted_labels: list):
                 pred_idx = local_acts.index(pred)
             except ValueError:
                 pred_idx = -1
+                
+            print(f"local_acts: {local_acts}\n")
+            print(f"gold: {gold}, pred: {pred}\n")
+            print(f"gold_idx: {gold_idx}, pred_idx: {pred_idx}\n")
+            print("--------------------\n")
 
             gold_ids.append(gold_idx)
             pred_ids.append(pred_idx)
@@ -213,7 +215,7 @@ def evaluate(ds: Dataset, predicted_labels: list):
 # ------------- Main ----------------
 
 # TODO: adjust frac if you want to test on a smaller fraction of the dataset
-frac = 0.01
+frac = 0.1
 _, _, test_ds = load_dataset(dataset_file, dataset_task, frac=frac)
 
 # print stats used for test

@@ -38,7 +38,6 @@ def build_instruction_encoding(example, tokenizer, max_length=512, task_type="TR
     enc_answer = tokenizer(label_str, add_special_tokens=False)
     input_ids = enc_prompt["input_ids"] + enc_answer["input_ids"]
     attention_mask = enc_prompt["attention_mask"] + enc_answer["attention_mask"]
-    # set labels for the prompt portion to -100, which means ignore those tokens for the loss function cross-entropy
     labels = ([-100] * len(enc_prompt["input_ids"])) + enc_answer["input_ids"]
     
     input_ids = input_ids[:max_length]
