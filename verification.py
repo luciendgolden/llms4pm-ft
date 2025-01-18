@@ -41,7 +41,7 @@ def verify_samples(task_name, num_samples=3):
     model_name = "meta-llama/Meta-Llama-3-8B-Instruct"
     tokenizer = AutoTokenizer.from_pretrained(
         model_name,
-        token="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",
+        token="",
     )
     
     map_func = partial(instruction_map_fn, tokenizer=tokenizer, task_type=task_type)

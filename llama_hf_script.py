@@ -89,7 +89,7 @@ Load the training and validation datasets using the load_trace_data function.
 """
 # fraction of the dataset to use for training and validation
 # TODO: Set to None for "all" production
-frac = 0.1
+frac = None
 
 raw_train_dataset, raw_val_dataset, raw_test_dataset = load_dataset(dataset_file, task_type, frac)
 train_dataset_size = len(raw_train_dataset)
@@ -153,7 +153,7 @@ else:
 save_total_limit = 5
 
 # TODO: Short run for throughput estimation
-short_run = False
+short_run = True
 
 save_dir = (f"{label_model_name}_{task_name}_samples-{train_samples}_epochs-{epochs}_"
             f"lr-{learning_rate}_batch-{train_batch_size}x{gradient_accumulation_steps}_time-{timestamp}")
@@ -169,7 +169,7 @@ model, tokenizer = FastLanguageModel.from_pretrained(
     max_seq_length=max_seq_length,
     dtype=dtype,
     load_in_4bit=load_in_4bit,
-    token="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",
+    token="",
 )
 model = FastLanguageModel.get_peft_model(
     model,
@@ -296,6 +296,36 @@ class CustomLoggingCallback(TrainerCallback):
             if loss is not None and grad_norm is not None and lr is not None and epoch is not None:
                 print(f"{{'loss': {loss:.4f}, 'grad_norm': {grad_norm}, 'learning_rate': {lr}, 'epoch': {epoch:.2f}}}")
 
+#-------------------------CUSTOM METRICS-------------------------
+def compute_metrics(eval_pred):
+    """
+    Compute both micro and macro precision, recall, and F1. 
+    Also demonstrates how you might include accuracy.
+    """
+    logits, labels = eval_pred
+    predictions = np.argmax(logits, axis=-1)
+    mask = labels != -100
+    labels = labels[mask]
+    predictions = predictions[mask]
+    precision_mic, recall_mic, f1_mic, _ = precision_recall_fscore_support(
+        labels, predictions, average='micro', zero_division=0
+    )
+    precision_mac, recall_mac, f1_mac, _ = precision_recall_fscore_support(
+        labels, predictions, average='macro', zero_division=0
+    )
+
+    accuracy = accuracy_score(labels, predictions)
+
+    return {
+        "precision_mic": precision_mic,
+        "recall_mic": recall_mic,
+        "f1_mic": f1_mic,
+        "precision_mac": precision_mac,
+        "recall_mac": recall_mac,
+        "f1_mac": f1_mac,
+        "accuracy": accuracy,
+    }
+
 #-------------------------TRAINING ARGUMENTS-------------------------
 """
 Configure training arguments and initialize the trainer with the model, datasets, and data collator.
@@ -383,7 +413,7 @@ trainer = SFTTrainer(
     train_dataset=train_ds,
     eval_dataset=val_ds,
     data_collator=my_collator,
-    #compute_metrics=compute_metrics,
+    compute_metrics=compute_metrics,
 )
 
 # Add the custom checkpoint callback
@@ -418,6 +448,11 @@ else:
     print("No checkpoint found, starting training from scratch.")
     trainer_stats = trainer.train()
 
+#-------------------------EVALUATE THE MODEL-------------------------
+final_metrics = trainer.evaluate()
+print(final_metrics)
+df = pd.DataFrame([final_metrics])
+df.to_csv("final_metrics.csv", index=False)
 #------------------------- SAVE THE MODEL -------------------------
 # Save the fine-tuned model and tokenizer.
 model.save_pretrained(save_dir)

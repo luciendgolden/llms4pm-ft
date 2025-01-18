@@ -34,8 +34,9 @@ def build_instruction_encoding(example, tokenizer, max_length=512, task_type="TR
     else:
         raise ValueError(f"Unknown task_type: {task_type}")
 
-    enc_prompt = tokenizer(prompt_text, add_special_tokens=False)
-    enc_answer = tokenizer(label_str, add_special_tokens=False)
+    enc_prompt = tokenizer(text=prompt_text, add_special_tokens=False)
+    enc_answer = tokenizer(text=label_str, add_special_tokens=False)
+    
     input_ids = enc_prompt["input_ids"] + enc_answer["input_ids"]
     attention_mask = enc_prompt["attention_mask"] + enc_answer["attention_mask"]
     labels = ([-100] * len(enc_prompt["input_ids"])) + enc_answer["input_ids"]

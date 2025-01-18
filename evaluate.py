@@ -56,7 +56,7 @@ def generate_binary_output(prompt):
     """
     Generates binary predictions (True/False) based on the model's output.
     """
-    inputs = tokenizer(prompt, return_tensors="pt").to("cuda")
+    inputs = tokenizer(text=prompt, return_tensors="pt").to("cuda")
     with torch.no_grad():
         output_tokens = model.generate(
             input_ids=inputs["input_ids"],
@@ -77,7 +77,7 @@ def generate_binary_output(prompt):
     return False
 
 def generate_next_activity(prompt):
-    inputs = tokenizer(prompt, return_tensors="pt").to("cuda")
+    inputs = tokenizer(text=prompt, return_tensors="pt").to("cuda")
     with torch.no_grad():
         output_tokens = model.generate(
             input_ids=inputs["input_ids"],
@@ -215,7 +215,7 @@ def evaluate(ds: Dataset, predicted_labels: list):
 # ------------- Main ----------------
 
 # TODO: adjust frac if you want to test on a smaller fraction of the dataset
-frac = 0.1
+frac = None
 _, _, test_ds = load_dataset(dataset_file, dataset_task, frac=frac)
 
 # print stats used for test
