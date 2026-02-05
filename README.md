@@ -11,7 +11,7 @@ The fine-tuning experiments were re-implemented since struggling with the triden
 
 ## Google Colab Notebook
 
-A Google Colab notebook is provided to demonstrate how to fine-tune large language models for process mining tasks. The notebook includes step-by-step instructions and code snippets to guide users through the fine-tuning process.
+A Google Colab notebook is provided to demonstrate the ICL (in-context learning) approach and fine-tuning.
 
 The notebook can be accessed here:
 
